@@ -65,7 +65,8 @@ Press `Ctrl+C` in the terminal where the server is running.
 - Two pieces of red food are always on the board. Eat one to grow and score a point; a new one appears right away.
 - Any new piece of food has a 20% chance to be **super food** (glowing gold). Eating it grows the snake by 2 segments and scores 2 points.
 - The snake speeds up as your score rises.
-- Hitting a wall or your own body ends the game.
+- Walls don't kill you: the snake passes through an edge and comes out on the opposite side.
+- Running into your own body ends the game.
 - Your best score is saved in the browser.
 
 ## Troubleshooting

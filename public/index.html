@@ -91,12 +91,12 @@
 
     function step() {
       dir = nextDir;
-      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
-      const hitWall = head.x < 0 || head.y < 0 || head.x >= GRID || head.y >= GRID;
+      // Walls wrap around: leaving one edge re-enters from the opposite edge
+      const head = { x: (snake[0].x + dir.x + GRID) % GRID, y: (snake[0].y + dir.y + GRID) % GRID };
       const eaten = foods.findIndex(f => f.x === head.x && f.y === head.y);
       // Tail moves away this tick unless we're growing, so exclude it from the self-collision check
       const body = snake.slice(0, grow > 0 || eaten >= 0 ? snake.length : -1);
-      if (hitWall || body.some(s => s.x === head.x && s.y === head.y)) return gameOver();
+      if (body.some(s => s.x === head.x && s.y === head.y)) return gameOver();
 
       snake.unshift(head);
       if (eaten >= 0) {

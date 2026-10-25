@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snake</title>
+  <style>
+    :root { --bg: #111827; --panel: #1f2937; --fg: #e5e7eb; --muted: #9ca3af; --snake: #22c55e; --head: #86efac; --food: #ef4444; --super: #facc15; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, sans-serif; padding: 16px; }
+    h1 { margin: 0 0 8px; letter-spacing: 2px; }
+    .stats { display: flex; gap: 24px; margin-bottom: 12px; color: var(--muted); }
+    .stats b { color: var(--fg); }
+    .wrap { position: relative; }
+    canvas { display: block; background: var(--panel); border-radius: 8px; max-width: 100%; height: auto; touch-action: none; }
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+               background: rgba(17, 24, 39, .8); border-radius: 8px; text-align: center; }
+    .overlay.hidden { display: none; }
+    .overlay h2 { margin: 0 0 8px; }
+    button { margin-top: 12px; padding: 10px 24px; font-size: 16px; border: 0; border-radius: 6px; background: var(--snake); color: #052e16; font-weight: 600; cursor: pointer; }
+    .help { margin-top: 12px; color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>SNAKE</h1>
+  <div class="stats"><span>Score: <b id="score">0</b></span><span>Best: <b id="best">0</b></span></div>
+  <div class="wrap">
+    <canvas id="board" width="400" height="400"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="title">Ready?</h2>
+      <div id="msg">Arrow keys / WASD to move, Space to pause</div>
+      <button id="start">Start</button>
+    </div>
+  </div>
+  <div class="help">Arrows / WASD: move · Space: pause · Gold food = +2 · Swipe on touch screens</div>
+
+  <script>
+    const GRID = 20, CELL = 20, FOOD_COUNT = 2, SUPER_CHANCE = 0.2, SUPER_GROWTH = 2, BASE_SPEED = 120, MIN_SPEED = 50;
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const $ = id => document.getElementById(id);
+    const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+    let snake, dir, nextDir, foods, grow, score, timer, running = false, paused = false;
+    let best = 0;
+    try { best = Number(localStorage.getItem('snake-best')) || 0; } catch (e) {}
+    $('best').textContent = best;
+
+    function reset() {
+      snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+      dir = nextDir = { x: 1, y: 0 };
+      score = 0;
+      grow = 0;
+      $('score').textContent = score;
+      foods = [];
+      fillFood();
+    }
+
+    // Top up to FOOD_COUNT pieces, each on a free cell not occupied by the snake or other food
+    function fillFood() {
+      while (foods.length < FOOD_COUNT) {
+        const free = [];
+        for (let x = 0; x < GRID; x++)
+          for (let y = 0; y < GRID; y++)
+            if (!snake.some(s => s.x === x && s.y === y) && !foods.some(f => f.x === x && f.y === y)) free.push({ x, y });
+        if (!free.length) return;
+        const cell = free[Math.floor(Math.random() * free.length)];
+        foods.push({ ...cell, super: Math.random() < SUPER_CHANCE });
+      }
+    }
+
+    function speed() { return Math.max(MIN_SPEED, BASE_SPEED - score * 2); }
+
+    function start() {
+      reset();
+      running = true;
+      paused = false;
+      $('overlay').classList.add('hidden');
+      // Drop focus so Space toggles pause instead of re-clicking the Start button
+      $('start').blur();
+      clearTimeout(timer);
+      loop();
+    }
+
+    function loop() {
+      step();
+      draw();
+      if (running && !paused) timer = setTimeout(loop, speed());
+    }
+
+    function step() {
+      dir = nextDir;
+      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+      const hitWall = head.x < 0 || head.y < 0 || head.x >= GRID || head.y >= GRID;
+      const eaten = foods.findIndex(f => f.x === head.x && f.y === head.y);
+      // Tail moves away this tick unless we're growing, so exclude it from the self-collision check
+      const body = snake.slice(0, grow > 0 || eaten >= 0 ? snake.length : -1);
+      if (hitWall || body.some(s => s.x === head.x && s.y === head.y)) return gameOver();
+
+      snake.unshift(head);
+      if (eaten >= 0) {
+        // Super food adds SUPER_GROWTH segments (one per tick) and the same number of points
+        const gain = foods[eaten].super ? SUPER_GROWTH : 1;
+        grow += gain;
+        score += gain;
+        $('score').textContent = score;
+        foods.splice(eaten, 1);
+        fillFood();
+      }
+      if (grow > 0) grow--;
+      else snake.pop();
+      if (snake.length >= GRID * GRID) return gameOver(true);
+    }
+
+    function draw() {
+      ctx.fillStyle = css('--panel');
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      foods.forEach(f => {
+        ctx.fillStyle = f.super ? css('--super') : css('--food');
+        ctx.shadowColor = f.super ? css('--super') : 'transparent';
+        ctx.shadowBlur = f.super ? 12 : 0;
+        ctx.beginPath();
+        ctx.arc(f.x * CELL + CELL / 2, f.y * CELL + CELL / 2, CELL / 2 - (f.super ? 1 : 2), 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.shadowBlur = 0;
+
+      snake.forEach((s, i) => {
+        ctx.fillStyle = i === 0 ? css('--head') : css('--snake');
+        ctx.fillRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2);
+      });
+    }
+
+    function gameOver(won = false) {
+      running = false;
+      if (score > best) {
+        best = score;
+        $('best').textContent = best;
+        try { localStorage.setItem('snake-best', best); } catch (e) {}
+      }
+      $('title').textContent = won ? 'You win!' : 'Game Over';
+      $('msg').textContent = `Score: ${score}`;
+      $('start').textContent = 'Play again';
+      $('overlay').classList.remove('hidden');
+    }
+
+    function togglePause() {
+      if (!running) return;
+      paused = !paused;
+      if (paused) {
+        clearTimeout(timer);
+        $('title').textContent = 'Paused';
+        $('msg').textContent = 'Press Space to resume';
+        $('start').style.display = 'none';
+        $('overlay').classList.remove('hidden');
+      } else {
+        $('start').style.display = '';
+        $('overlay').classList.add('hidden');
+        loop();
+      }
+    }
+
+    function turn(x, y) {
+      // Block reversing into yourself
+      if (x === -dir.x && y === -dir.y) return;
+      nextDir = { x, y };
+    }
+
+    const KEYS = {
+      ArrowUp: [0, -1], w: [0, -1], W: [0, -1],
+      ArrowDown: [0, 1], s: [0, 1], S: [0, 1],
+      ArrowLeft: [-1, 0], a: [-1, 0], A: [-1, 0],
+      ArrowRight: [1, 0], d: [1, 0], D: [1, 0],
+    };
+
+    document.addEventListener('keydown', e => {
+      if (e.key === ' ') {
+        e.preventDefault();
+        running ? togglePause() : start();
+        return;
+      }
+      if (e.key === 'Enter' && !running) return start();
+      const k = KEYS[e.key];
+      if (k && running && !paused) { e.preventDefault(); turn(...k); }
+    });
+
+    let touchStart = null;
+    canvas.addEventListener('touchstart', e => { touchStart = e.touches[0]; }, { passive: true });
+    canvas.addEventListener('touchend', e => {
+      if (!touchStart || !running) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStart.clientX, dy = t.clientY - touchStart.clientY;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+      Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy));
+    });
+
+    $('start').addEventListener('click', start);
+
+    reset();
+    draw();
+  </script>
+</body>
+</html>
